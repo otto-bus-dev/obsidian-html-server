@@ -10,16 +10,13 @@ export const contentResolver = async (
   referer: string,
   plugin: HtmlServerPlugin,
   markdownRenderer: CustomMarkdownRenderer,
-  extraVars: ReplaceableVariables[] = []
+  extraVars: ReplaceableVariables[] = [],
 ) => {
   if (path == INTERNAL_CSS_ENPOINT) {
     const fullCssText =
       Array.from(document.styleSheets)
-        .flatMap((styleSheet) =>
-          Array.from(styleSheet.cssRules).map((cssRule) => cssRule.cssText)
-        )
-        .join('\n') +
-      `\n.markdown-preview-view, .markdown-embed-content {height: unset !important;}`;
+        .flatMap((styleSheet) => Array.from(styleSheet.cssRules).map((cssRule) => cssRule.cssText))
+        .join('\n') + `\n.markdown-preview-view, .markdown-embed-content {height: unset !important;}`;
 
     return {
       contentType: 'text/css',
@@ -132,13 +129,11 @@ export const contentResolver = async (
       [
         {
           varName: 'THEME_MODE',
-          varValue: document.body.classList.contains('theme-dark')
-            ? 'theme-dark'
-            : 'theme-light',
+          varValue: document.body.classList.contains('theme-dark') ? 'theme-dark' : 'theme-light',
         },
         ...plugin.settings.htmlReplaceableVariables,
         ...extraVars,
-      ]
+      ],
     );
 
     return {
@@ -147,39 +142,49 @@ export const contentResolver = async (
     };
   }
 
+  const menuFile = plugin.app.metadataCache.getFirstLinkpathDest('/' + plugin.settings.defaultFile, referer); // plugin.settings.defaultFile);
+
+  if (!menuFile) return null;
+  console.log(menuFile.path, menuFile.name);
+
   const file = plugin.app.metadataCache.getFirstLinkpathDest(path, referer);
   if (!file) return null;
   console.log(file.path, file.name);
 
   if (file.extension === 'md') {
     const frontmatterVariables = await readFrontmatter(file, plugin.app);
+
+    var menuRenderedMarkdown = '';
+
+    if (menuFile) {
+      const menuMarkdown = await menuFile.vault.read(menuFile);
+      menuRenderedMarkdown = await markdownRenderer.renderHtmlFromMarkdown(menuMarkdown);
+    }
     const markdown = await file.vault.read(file);
-    const renderedMarkdown = await markdownRenderer.renderHtmlFromMarkdown(
-      markdown
-    );
+    const renderedMarkdown = await markdownRenderer.renderHtmlFromMarkdown(markdown);
+
     return {
       contentType: 'text/html',
-      payload: parseHtmlVariables(
-        plugin.settings.indexHtml || '<html></html>',
-        [
-          {
-            varName: 'RENDERED_CONTENT_FILE_NAME',
-            varValue: file.basename,
-          },
-          {
-            varName: 'THEME_MODE',
-            varValue: document.body.classList.contains('theme-dark')
-              ? 'theme-dark'
-              : 'theme-light',
-          },
-          {
-            varName: 'RENDERED_CONTENT',
-            varValue: renderedMarkdown,
-          },
-          ...plugin.settings.htmlReplaceableVariables,
-          ...frontmatterVariables,
-        ]
-      ),
+      payload: parseHtmlVariables(plugin.settings.indexHtml || '<html></html>', [
+        {
+          varName: 'RENDERED_CONTENT_FILE_NAME',
+          varValue: file.basename,
+        },
+        {
+          varName: 'THEME_MODE',
+          varValue: document.body.classList.contains('theme-dark') ? 'theme-dark' : 'theme-light',
+        },
+        {
+          varName: 'MENU_RENDERED_CONTENT',
+          varValue: menuRenderedMarkdown,
+        },
+        {
+          varName: 'RENDERED_CONTENT',
+          varValue: renderedMarkdown,
+        },
+        ...plugin.settings.htmlReplaceableVariables,
+        ...frontmatterVariables,
+      ]),
     };
   }
   const payload = await plugin.app.vault.readBinary(file);
@@ -217,10 +222,7 @@ async function readFrontmatter(file: TFile, app: App) {
   });
 }
 
-function parseHtmlVariables(
-  html: string,
-  _htmlVariables: { varName: string; varValue: string }[]
-) {
+function parseHtmlVariables(html: string, _htmlVariables: { varName: string; varValue: string }[]) {
   const varMap = new Map();
   _htmlVariables.forEach(({ varName, varValue }) => {
     varMap.set(varName, varValue);
