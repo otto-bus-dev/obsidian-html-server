@@ -1,0 +1,4 @@
+{
+  "option":"obsidian-html-server",
+  "action": "~/src/obsidian-html-server/"
+}
